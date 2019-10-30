@@ -1,0 +1,13 @@
+mkdir shoe_data
+cd shoe_data
+mkdir shoe_transactions
+cd shoe_transactions
+mkdir adidas
+mkdir nike
+cd ../..
+mkdir shoe_info
+mkdir shoe_links
+mkdir shoe_transactions
+cd shoe_transactions
+mkdir adidas
+mkdir nike
