@@ -30,12 +30,16 @@ class StockXDataFormatter:
 
         header = self.shoe_transaction_keys #starts with filter_list as header
         for sku in sku_list:
-            file_name = "shoe_transactions/" + self.brand + "/" + sku + ".json"
-            rows = self._filter_shoe_transactions_keys(file_name, self.shoe_transaction_keys)
-            rows.insert(0, header)
+            try:
+                file_name = "shoe_transactions/" + self.brand + "/" + sku + ".json"
+                rows = self._filter_shoe_transactions_keys(file_name, self.shoe_transaction_keys)
+                rows.insert(0, header)
 
-            file_name = "shoe_data/shoe_transactions/{}/{}.csv".format(self.brand, sku)
-            self._write_to_csv(file_name, rows)
+                file_name = "shoe_data/shoe_transactions/{}/{}.csv".format(self.brand, sku)
+                self._write_to_csv(file_name, rows)
+            except FileNotFoundError:
+                print("{} does not exist".format(file_name))
+                continue
 
     def _write_to_csv(self, file_name, data):
         with open(file_name, "w", newline="") as f:

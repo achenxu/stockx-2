@@ -6,8 +6,13 @@ mkdir adidas
 mkdir nike
 cd ../..
 mkdir shoe_info
+cd shoe_info
+mkdir adidas
+mkdir nike
+cd ..
 mkdir shoe_links
 mkdir shoe_transactions
 cd shoe_transactions
 mkdir adidas
 mkdir nike
+cd ..
