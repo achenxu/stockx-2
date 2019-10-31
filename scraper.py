@@ -33,7 +33,7 @@ class StockXScraper:
             for i in range(10):
                 try:
                     proxy = self.proxies[i % len(self.proxies)]
-                    response = requests.request("GET", url, headers=headers, proxies={'https': proxy, 'http': proxy})
+                    response = requests.request("GET", url, headers=self.headers, proxies={'https': proxy, 'http': proxy})
                     print("Proxy Value: {}, Request Status Code: {}".format(proxy, response.status_code))
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'lxml')
@@ -67,7 +67,7 @@ class StockXScraper:
             for i in range(10):
                 try:
                     proxy = self.proxies[i % len(self.proxies)]
-                    response = requests.request("GET", url, headers=headers, proxies={'https': proxy, 'http': proxy})
+                    response = requests.request("GET", url, headers=self.headers, proxies={'https': proxy, 'http': proxy})
                     print("Proxy Value: {}, Request Status Code: {}".format(proxy, response.status_code))
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'lxml')
@@ -102,18 +102,17 @@ class StockXScraper:
         in the shoe_transactions directory
         """
         sku_values = self._get_list_from_csv(sku_file)
-
         for sku in sku_values:
             url = "https://stockx.com/api/products/{}/activity".format(sku)
             querystring = {"state":"480","currency":"USD","limit":"100000","page":"1","sort":"createdAt","order":"DESC"}
             for i in range(10):
                 try:
                     proxy = self.proxies[i % len(self.proxies)]
-                    response = requests.request("GET", url, headers=headers, params=querystring, proxies={'https': proxy, 'http': proxy})
+                    response = requests.request("GET", url, headers=self.headers, params=querystring, proxies={'https': proxy, 'http': proxy})
                     print("Proxy Value: {}, Request Status Code: {}".format(proxy, response.status_code))
                     if response.status_code == 200:
                         data = response.json()
-                        file_name = 'shoe_transactions/{}/{}.json'.format(brand, sku)
+                        file_name = 'shoe_transactions/{}/{}.json'.format(self.brand, sku)
                         self._write_to_json(file_name, data)
 
                         print("JSON file: {} being created".format(file_name))
@@ -161,13 +160,13 @@ class StockXScraper:
         return flattened_list
 
 if __name__ == '__main__':
-    stock_x_scraper = StockXScraper("adidas", 20)
+    stock_x_scraper = StockXScraper("adidas", 1)
 
-    print("Getting Shoe Links:")
-    stock_x_scraper.get_shoe_links()
+    #print("Getting Shoe Links:")
+    #stock_x_scraper.get_shoe_links()
     
-    print("Getting Shoe Info:")
-    stock_x_scraper.get_shoe_info("shoe_links/adidas_links.csv")
+    #print("Getting Shoe Info:")
+    #stock_x_scraper.get_shoe_info("shoe_links/adidas_links.csv")
 
     print("Getting Shoe Transaction Data:")
     stock_x_scraper.get_shoe_transaction_data("shoe_transactions/adidas_sku_values.csv")

@@ -15,7 +15,7 @@ class StockXDataFormatter:
 
         rows = [self.shoe_info_keys] #starts with self.shoe_info_keys as header
         for sku in sku_list:
-            file_name = "shoe_info/" + sku + ".json"
+            file_name = "shoe_info/" + self.brand + "/" + sku + ".json"
             values = self._filter_shoe_info_keys(file_name, self.shoe_info_keys)
             rows.append(values)
 
