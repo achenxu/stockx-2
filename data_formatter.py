@@ -11,7 +11,6 @@ class StockXDataFormatter:
         """
         Creates csv file containing data for each shoe based on SKU from sku
         """
-
         sku_list = self._get_list_from_csv(sku_csv)
 
         rows = [self.shoe_info_keys] #starts with self.shoe_info_keys as header
@@ -27,10 +26,8 @@ class StockXDataFormatter:
         """
         Creates csv file containing data for each shoe based on SKU from sku
         """
-
         sku_list = self._get_list_from_csv(sku_csv)
 
-        sku_list = ['4b68f73c-94d2-452e-b88a-8d350d1f5aa1']
         header = self.shoe_transaction_keys #starts with filter_list as header
         for sku in sku_list:
             file_name = "shoe_transactions/" + self.brand + "/" + sku + ".json"
