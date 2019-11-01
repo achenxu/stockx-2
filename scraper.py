@@ -3,6 +3,7 @@ import csv
 import json
 from bs4 import BeautifulSoup
 from time import sleep
+import os
 
 class StockXScraper:
     def __init__(self, brand, pages):
@@ -52,7 +53,7 @@ class StockXScraper:
 
         return shoe_links
 
-    def get_shoe_info(self, shoe_links_file):
+    def get_shoe_info(self, shoe_links_file, index=0):
         """
         Takes in a csv file containing links to different shoes and gets a json file containing information about the shoe
         such as name, brand, release date, colorway, and sku and stores it as a JSON file in the shoe_info directory writes
@@ -60,8 +61,10 @@ class StockXScraper:
         """
         shoe_links = self._get_list_from_csv(shoe_links_file)
 
-        skus = []
         for i, link in enumerate(shoe_links):
+            if i < index:
+                continue
+
             url = "https://stockx.com{}".format(link)
             print("({}/{}): Extracting shoe info from {}".format(i+1, len(shoe_links)+1, url))
             for i in range(10):
@@ -80,7 +83,6 @@ class StockXScraper:
                         info = info.replace('<script type="application/ld+json">', "")
 
                         data = json.loads(info)
-                        skus.append(data["sku"])
                         file_name = "shoe_info/{}/{}.json".format(self.brand, data["sku"])
                         self._write_to_json(file_name, data)
 
@@ -90,32 +92,30 @@ class StockXScraper:
                     #sleep(10)
                     continue
 
-        file_name = "shoe_transactions/{}_sku_values.csv".format(self.brand)
-        self._write_to_csv(file_name, skus)
-        
-        return skus
-
-    def get_shoe_transaction_data(self, sku_file):
+    def get_shoe_transaction_data(self):
         """
-        Takes in a csv file containing many SKU values corresponding to different shoes and converts the file into a list and iterates
-        through each SKU grabbing up 100,000 transactions with information about date of transaction, size, and price and stores it as a JSON file
+        reads each SKU from the shoe_info directory and for each SKU grabs up 100,000 transactions with information about date of transaction, size, and price and stores it as a JSON file
         in the shoe_transactions directory
         """
-        sku_values = self._get_list_from_csv(sku_file)
-        for sku in sku_values:
+        sku_values = self._get_sku_list("info")
+        for index, sku in enumerate(sku_values):
+            if self._check_if_shoe_transaction_already_scraped(sku):
+                print("JSON file for {} already exists, skipping".format(sku))
+                continue
+
             url = "https://stockx.com/api/products/{}/activity".format(sku)
             querystring = {"state":"480","currency":"USD","limit":"100000","page":"1","sort":"createdAt","order":"DESC"}
             for i in range(10):
                 try:
                     proxy = self.proxies[i % len(self.proxies)]
                     response = requests.request("GET", url, headers=self.headers, params=querystring, proxies={'https': proxy, 'http': proxy})
-                    print("Proxy Value: {}, Request Status Code: {}".format(proxy, response.status_code))
+                    print("Proxy Value: {}, Request Status Code: {}, SKU Value: {}".format(proxy, response.status_code, sku))
                     if response.status_code == 200:
                         data = response.json()
                         file_name = 'shoe_transactions/{}/{}.json'.format(self.brand, sku)
                         self._write_to_json(file_name, data)
 
-                        print("JSON file: {} being created".format(file_name))
+                        print("({}/{}) JSON file: {} being created".format(index+1, len(sku_values)+1, file_name))
                         break
                 except:
                     #sleep(10)
@@ -138,7 +138,7 @@ class StockXScraper:
                 proxy = "{}:{}".format(ips[i].text, ips[i+1].text)
                 proxies.append(proxy)
         return proxies
-    
+
     def _write_to_csv(self, file_name, data_list):
         with open(file_name, 'w') as f:
             wr = csv.writer(f, quoting=csv.QUOTE_ALL)
@@ -159,14 +159,38 @@ class StockXScraper:
                 flattened_list.append(value)
         return flattened_list
 
+    def _get_sku_list(self, data_type):
+        directory_name = "shoe_{}/{}/".format(data_type, self.brand)
+        files = os.listdir(directory_name)
+        sku_list = []
+        for file in files:
+            sku_list.append(file.replace(".json", ""))
+        return sku_list
+
+    def _check_if_shoe_link_already_scraped(self, shoe_link, shoe_links):
+        if shoe_link in shoe_links:
+            return True
+        return False
+
+    def _check_if_shoe_info_already_scraped(self, sku, sku_list):
+        if sku in sku_list:
+            return True
+        return False
+
+    def _check_if_shoe_transaction_already_scraped(self, sku):
+        sku_list = self._get_sku_list("transactions")
+        if sku in sku_list:
+            return True
+        return False
+
 if __name__ == '__main__':
-    stock_x_scraper = StockXScraper("adidas", 1)
+    stock_x_scraper = StockXScraper("adidas", 20)
 
     #print("Getting Shoe Links:")
     #stock_x_scraper.get_shoe_links()
     
     #print("Getting Shoe Info:")
-    #stock_x_scraper.get_shoe_info("shoe_links/adidas_links.csv")
+    #stock_x_scraper.get_shoe_info("shoe_links/adidas_links.csv", index=333)
 
     print("Getting Shoe Transaction Data:")
-    stock_x_scraper.get_shoe_transaction_data("shoe_transactions/adidas_sku_values.csv")
+    stock_x_scraper.get_shoe_transaction_data()
