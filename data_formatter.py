@@ -1,17 +1,18 @@
 import json
 import csv
+import os
 
 class StockXDataFormatter:
     def __init__(self, brand):
         self.brand = brand
         self.shoe_info_keys = ["name", "brand", "model", "sku", "color", "releaseDate"]
-        self.shoe_transaction_keys = ["amount", "createdAt", "shoeSize", "localCurrency"]
+        self.shoe_transaction_keys = ["sku", "amount", "createdAt", "shoeSize", "localCurrency"]
 
-    def create_shoe_info_csv(self, sku_csv):
+    def create_shoe_info_csv(self):
         """
         Creates csv file containing data for each shoe based on SKU from sku
         """
-        sku_list = self._get_list_from_csv(sku_csv)
+        sku_list = self._get_sku_list()
 
         rows = [self.shoe_info_keys] #starts with self.shoe_info_keys as header
         for sku in sku_list:
@@ -22,17 +23,17 @@ class StockXDataFormatter:
         file_name = "shoe_data/{}_shoe_info.csv".format(self.brand)
         self._write_to_csv(file_name, rows)
 
-    def create_shoe_transactions_csv(self, sku_csv):
+    def create_shoe_transactions_csv(self):
         """
         Creates csv file containing data for each shoe based on SKU from sku
         """
-        sku_list = self._get_list_from_csv(sku_csv)
+        sku_list = self._get_sku_list()
 
         header = self.shoe_transaction_keys #starts with filter_list as header
         for sku in sku_list:
             try:
                 file_name = "shoe_transactions/" + self.brand + "/" + sku + ".json"
-                rows = self._filter_shoe_transactions_keys(file_name, self.shoe_transaction_keys)
+                rows = self._filter_shoe_transactions_keys(file_name, sku, self.shoe_transaction_keys)
                 rows.insert(0, header)
 
                 file_name = "shoe_data/shoe_transactions/{}/{}.csv".format(self.brand, sku)
@@ -57,6 +58,14 @@ class StockXDataFormatter:
                 flattened_list.append(value)
         return flattened_list
 
+    def _get_sku_list(self):
+        directory_name = "shoe_info/{}/".format(self.brand)
+        files = os.listdir(directory_name)
+        sku_list = []
+        for file in files:
+            sku_list.append(file.replace(".json", ""))
+        return sku_list
+
     def _filter_shoe_info_keys(self, json_file, filter_list):
         with open(json_file) as f:
             data = json.load(f)
@@ -67,13 +76,13 @@ class StockXDataFormatter:
                 values.append(data[key])
         return values
 
-    def _filter_shoe_transactions_keys(self, json_file, filter_list):
+    def _filter_shoe_transactions_keys(self, json_file, sku, filter_list):
         with open(json_file) as f:
             data = json.load(f)
 
         values = []
         for transaction in data["ProductActivity"]:
-            transaction_values = []
+            transaction_values = [sku]
             for filter_key in filter_list:
                 if filter_key in transaction.keys():
                     transaction_values.append(transaction[filter_key])
@@ -82,5 +91,6 @@ class StockXDataFormatter:
 
 if __name__ == '__main__':
     formatter = StockXDataFormatter("adidas")
-    formatter.create_shoe_info_csv("shoe_transactions/adidas_sku_values.csv")
-    formatter.create_shoe_transactions_csv("shoe_transactions/adidas_sku_values.csv")
+
+    #formatter.create_shoe_info_csv()
+    formatter.create_shoe_transactions_csv()
