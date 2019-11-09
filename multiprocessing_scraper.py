@@ -2,15 +2,17 @@ import requests
 import csv
 import json
 from bs4 import BeautifulSoup
-from time import sleep
+from random import randint
 import os
-from multiprocessing import Pool
+from multiprocessing import Pool, Process, cpu_count, current_process
 
 class StockXScraper:
-    def __init__(self, brand, pages):
+    def __init__(self, brand):
         self.brand = brand
-        self.pages = pages
         self.proxies = self._get_proxies()
+        self.scraped_pages = self._get_scraped_pages()
+        self.scraped_shoe_info_links = self._get_scraped_shoe_info_links()
+        self.scraped_sku_list = self._get_sku_list("transactions")
         self.headers = {
                 'User-Agent': "PostmanRuntime/7.19.0",
                 'Accept': "*/*",
@@ -25,21 +27,18 @@ class StockXScraper:
 
     def get_shoe_links(self, page):
         """
-        Takes in a shoe brand (nike or adidas) and amount of pages (25 per page) and creates a list of all the links
-        and stores in a csv for in the shoe_links directory
+        Takes in a shoe brand (nike or adidas) and amount of pages up to 25 pages total and creates a list of all the links
+        and stores in a csv in the shoe_links directory
         """
-        MAX_PAGES = 25
-        shoe_links= []
-        if page > MAX_PAGES:
-            return
-
+        shoe_links = []
         url = "https://stockx.com/{}?page={}".format(self.brand, page)
-        print("StockX Page Number: {}".format(page))
-        for i in range(10):
+        #print("StockX Page Number: {}".format(page))
+        success = False
+        for _ in range(10):
             try:
-                proxy = self.proxies[i % len(self.proxies)]
+                proxy = self.proxies[randint(0, len(self.proxies))]
                 response = requests.request("GET", url, headers=self.headers, proxies={'https': proxy, 'http': proxy})
-                print("Proxy Value: {}, Request Status Code: {}".format(proxy, response.status_code))
+                #print("Proxy Value: {}, Request Status Code: {}".format(proxy, response.status_code))
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.text, 'lxml')
                     products_div = soup.find('div', attrs={'class': 'browse-grid'})
@@ -47,12 +46,25 @@ class StockXScraper:
                     for link in products:
                         if link['href'] not in products:
                             shoe_links.append(link['href'])
+                    print("Shoe links scraped from page {}, Process ID: {}".format(page, current_process().pid))
+                    file_name = "shoe_links/{}/{}.csv".format(self.brand, page)
+                    self._write_to_csv(file_name, shoe_links)
+                    success = True
                     break
             except:
-                #sleep(10)
                 continue
+        if success == False:
+            print("Unable to get information from {}, Process ID: {}".format(url, current_process().pid))
 
-        return shoe_links
+    def join_shoe_links_csv_files(self):
+        directory_name = "shoe_links/{}/".format(self.brand)
+        file_names = os.listdir(directory_name)
+        file_contents = []
+        for file_name in file_names:
+            file_contents.append(self._get_list_from_csv(directory_name + file_name))
+        file_contents_flattened = self._flatten_list(file_contents)
+        output_path = "shoe_links/{}_links.csv".format(self.brand.replace("-", "_"))
+        self._write_to_csv(output_path, file_contents_flattened)
 
     def get_shoe_info(self, link):
         """
@@ -61,31 +73,37 @@ class StockXScraper:
         SKUs to csv in shoe_transactions directory
         """
         url = "https://stockx.com{}".format(link)
+        if self._check_if_shoe_info_already_scraped(url):
+            #print("Already exists: JSON file for {}".format(url))
+            return
+
         print("Extracting shoe info from {}".format(url))
-        for i in range(10):
+        success = False
+        for _ in range(10):
             try:
-                proxy = self.proxies[i % len(self.proxies)]
+                proxy = self.proxies[randint(0, len(self.proxies))]
                 response = requests.request("GET", url, headers=self.headers, proxies={'https': proxy, 'http': proxy})
-                print("Proxy Value: {}, Request Status Code: {}".format(proxy, response.status_code))
+                #print("Proxy Value: {}, Request Status Code: {}, Shoe Link: {}".format(proxy, response.status_code, link))
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.text, 'lxml')
                     scripts = soup.findAll('script', type='application/ld+json')
 
                     #gets the last script which has shoe info
                     info = scripts[-1].text
-                    #removes script tags to turn have only the JSON object
+                    #removes script tags to have only the JSON object
                     info = info.replace("</script>", "")
                     info = info.replace('<script type="application/ld+json">', "")
-
-                    data = json.loads(info)
+                    data = json.loads(info, strict=False)
                     file_name = "shoe_info/{}/{}.json".format(self.brand, data["sku"])
                     self._write_to_json(file_name, data)
 
-                    print("JSON file: {} created".format(file_name))
+                    print("JSON file: {} created, Process ID: {}".format(file_name, current_process().pid))
+                    success = True
                     break
             except:
-                #sleep(10)
                 continue
+        if success == False:
+            print("Unable to get information from {}, Process ID: {}".format(url, current_process().pid))
 
     def get_shoe_transaction_data(self, sku):
         """
@@ -93,23 +111,28 @@ class StockXScraper:
         in the shoe_transactions directory
         """
         if self._check_if_shoe_transaction_already_scraped(sku):
-            print("JSON file: {} already exists, skipping")
+            #print("Already exists: JSON file for {}".format(sku))
             return
+
         url = "https://stockx.com/api/products/{}/activity".format(sku)
         querystring = {"state":"480","currency":"USD","limit":"100000","page":"1","sort":"createdAt","order":"DESC"}
-        for i in range(10):
+        success = False
+        for _ in range(10):
             try:
-                proxy = self.proxies[i % len(self.proxies)]
+                proxy = self.proxies[randint(0, len(self.proxies))]
                 response = requests.request("GET", url, headers=self.headers, params=querystring, proxies={'https': proxy, 'http': proxy})
-                print("Proxy Value: {}, Request Status Code: {}, SKU Value: {}".format(proxy, response.status_code, sku))
+                #print("Proxy Value: {}, Request Status Code: {}, SKU Value: {}, Process ID: {}".format(proxy, response.status_code, sku, current_process().pid))
                 if response.status_code == 200:
                     data = response.json()
                     file_name = 'shoe_transactions/{}/{}.json'.format(self.brand, sku)
-                    print("JSON file: {} created".format(file_name))
                     self._write_to_json(file_name, data)
-
+                    print("JSON file: {} created, Process ID: {}".format(file_name, current_process().pid))
+                    success = True
+                    break
             except:
                 continue
+        if success == False:
+            print("Unable to get information from {}, Process ID: {}".format(url, current_process().pid))
 
     def _get_proxies(self):
         """
@@ -129,6 +152,41 @@ class StockXScraper:
                 proxies.append(proxy)
         return proxies
 
+    def _get_scraped_pages(self):
+        directory_name = "shoe_links/{}/".format(self.brand)
+        file_names = os.listdir(directory_name)
+        return [file_name.replace(".csv", "") for file_name in file_names]
+
+    def _get_scraped_shoe_info_links(self):
+        directory_name = "shoe_info/{}/".format(self.brand)
+        file_names = os.listdir(directory_name)
+        scraped_links = []
+        for file_name in file_names:
+            file_path = directory_name + file_name
+            with open(file_path) as json_file:
+                data = json.load(json_file)
+                try:
+                    scraped_link = data["offers"]["url"]
+                    scraped_links.append(scraped_link)
+                except KeyError:
+                    continue
+        return scraped_links
+
+    def _get_list_from_csv(self, file_name):
+        with open(file_name, 'r') as f:
+            reader = csv.reader(f)
+            unflattened_list = list(reader)
+    
+        return self._flatten_list(unflattened_list)
+
+    def _get_sku_list(self, data_type):
+        directory_name = "shoe_{}/{}/".format(data_type, self.brand)
+        file_names = os.listdir(directory_name)
+        sku_list = []
+        for file_name in file_names:
+            sku_list.append(file_name.replace(".json", ""))
+        return sku_list
+
     def _write_to_csv(self, file_name, data_list):
         with open(file_name, 'w') as f:
             wr = csv.writer(f, quoting=csv.QUOTE_ALL)
@@ -138,67 +196,66 @@ class StockXScraper:
         with open(file_name, 'w') as f:
             json.dump(data, f)
 
-    def _get_list_from_csv(self, file_name):
-        with open(file_name, 'r') as f:
-            reader = csv.reader(f)
-            unflattened_list = list(reader)
-    
-        flattened_list = []
-        for inner_list in unflattened_list:
-            for value in inner_list:
-                flattened_list.append(value)
-        return flattened_list
-
-    def _get_sku_list(self, data_type):
-        directory_name = "shoe_{}/{}/".format(data_type, self.brand)
-        files = os.listdir(directory_name)
-        sku_list = []
-        for file in files:
-            sku_list.append(file.replace(".json", ""))
-        return sku_list
-
-    def _check_if_shoe_link_already_scraped(self, shoe_link, shoe_links):
-        if shoe_link in shoe_links:
-            return True
-        return False
-
-    def _check_if_shoe_info_already_scraped(self, sku, sku_list):
-        if sku in sku_list:
-            return True
+    def _check_if_shoe_info_already_scraped(self, shoe_link):
+        for scraped_link in self.scraped_shoe_info_links:
+            if scraped_link == shoe_link:
+                return True
         return False
 
     def _check_if_shoe_transaction_already_scraped(self, sku):
-        sku_list = self._get_sku_list("transactions")
-        if sku in sku_list:
+        if sku in self.scraped_sku_list:
             return True
         return False
 
-    
+    def _flatten_list(self, unflattened_list): 
+        flattened_list = []
+        for inner_list in unflattened_list:
+            if isinstance(inner_list, list):
+                for value in inner_list:
+                    flattened_list.append(value)
+            else:
+                continue
+        return flattened_list
 
-if __name__ == '__main__':
-    stock_x_scraper = StockXScraper("adidas", 20)
-    
-    print("Getting Shoe Links:")
-    pages = range(20, 25)
-    pool = Pool(processes=8)
-    links_result = pool.map(stock_x_scraper.get_shoe_links, pages)
+def scrape_shoe_links(stock_x_scraper):
+    pages = range(1, 26)
+    pages = [str(page) for page in pages]
+    pages_to_scrape = [page for page in pages if page not in stock_x_scraper.scraped_pages]
+    print("Amount of pages to scrape: {}".format(len(pages_to_scrape)))
+    pool = Pool(processes=cpu_count())
+    pool.map_async(stock_x_scraper.get_shoe_links, pages_to_scrape)
     pool.close()
     pool.join()
-    print(links_result)
+    stock_x_scraper.join_shoe_links_csv_files()
 
-
-    print("Getting Shoe Info:")
-    links = stock_x_scraper._get_list_from_csv("shoe_links/adidas_links.csv")
-    start_index = 333
-    pool = Pool(processes=8)
-    info_result = pool.map(stock_x_scraper.get_shoe_info, links[start_index:])
+def scrape_shoe_info(stock_x_scraper):
+    links = stock_x_scraper._get_list_from_csv("shoe_links/{}_links.csv".format(stock_x_scraper.brand.replace("-", "_")))
+    links_to_scrape = [link for link in links if "https://stockx.com" + link not in stock_x_scraper.scraped_shoe_info_links]
+    print("Amount of links to scrape: {}".format(len(links_to_scrape)))
+    pool = Pool(processes=cpu_count())
+    pool.map(stock_x_scraper.get_shoe_info, links_to_scrape)
     pool.close()
     pool.join()
-    
 
-    print("Getting Shoe Transaction Data:")
+def scrape_transaction_data(stock_x_scraper):
     sku_list = stock_x_scraper._get_sku_list("info")
-    pool = Pool(processes=8)
-    transaction_result = pool.map(stock_x_scraper.get_shoe_transaction_data, sku_list)
+    skus_to_scrape = [sku for sku in sku_list if sku not in stock_x_scraper.scraped_sku_list]
+    print("Amount of SKUs to scrape: {}".format(len(skus_to_scrape)))
+    pool = Pool(processes=cpu_count())
+    pool.map_async(stock_x_scraper.get_shoe_transaction_data, skus_to_scrape)
     pool.close()
     pool.join()
+    
+if __name__ == '__main__':
+    #adidas, nike, retro-jordans, other-sneakers
+    brand = "retro-jordans"
+    stock_x_scraper = StockXScraper(brand)
+
+    #print("Getting Shoe Links:")
+    #scrape_shoe_links(stock_x_scraper)
+    
+    print("Getting Shoe Info:")
+    scrape_shoe_info(stock_x_scraper)
+
+    #print("Getting Shoe Transaction Data:")
+    #scrape_transaction_data(stock_x_scraper)
