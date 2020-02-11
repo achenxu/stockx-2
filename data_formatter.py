@@ -1,8 +1,6 @@
 import json
 import csv
 import os
-from datetime import datetime
-import pandas as pd
 
 class StockXDataFormatter:
     def __init__(self, brand):
@@ -69,14 +67,6 @@ class StockXDataFormatter:
             sku_list.append(file.replace(".json", ""))
         return sku_list
 
-    def _get_shoe_name_list(self):
-        directory_name = "shoe_data/shoe_transactions/{}/".format(self.brand)
-        files = os.listdir(directory_name)
-        shoe_names = []
-        for file in files:
-            shoe_names.append(file.replace(".csv", ""))
-        return shoe_names
-
     def _write_to_csv(self, file_name, data):
         with open(file_name, "w", newline="") as f:
             writer = csv.writer(f)
@@ -111,137 +101,12 @@ class StockXDataFormatter:
             return values
         except KeyError: #some shoes don't have any transaction data
             return []
-
-    def _format_model(self, shoe_info_df):
-        if self.brand == "retro-jordans":
-            shoe_models = [shoe.replace("Jordan ", "") for shoe in list(shoe_info_df["model"])]
-        else:
-            shoe_models = [shoe.replace("{} ".format(self.brand), "") for shoe in list(shoe_info_df["model"])]
-        shoe_info_df["model"] = shoe_models
-
-    def _format_name(self, shoe_info_df):
-        if self.brand == "retro-jordans":
-            shoe_names = [shoe.replace("Jordan", "") for shoe in list(shoe_info_df["name"])]
-        else:
-            shoe_names = [shoe.replace("{} ".format(self.brand), "") for shoe in list(shoe_info_df["name"])]
-        shoe_info_df["name"] = shoe_names
-
-    def _add_color_info(self, shoe_info_df):
-        colorways = [color.split("/") for color in list(shoe_info_df["color"])]
-        most_colors_in_colorway = self._find_max_length(colorways)
-        for i in range(most_colors_in_colorway):
-            shoe_info_df["color_{}".format(i+1)] = [color[i] if i < len(color) else "N/A" for color in colorways]
-
-    def _add_date_info(self, shoe_info_df):
-        date_split = [date_.split("-") for date_ in list(shoe_info_df["releaseDate"])]
-        shoe_info_df["release_year"] = [date_[0] if len(date_) == 3 else "N/A" for date_ in date_split]
-        shoe_info_df["release_month"] = [date_[1] if len(date_) == 3 else "N/A" for date_ in date_split]
-        shoe_info_df["release_day"] = [date_[2] if len(date_) == 3 else "N/A" for date_ in date_split]
-
-    def _find_max_length(self, list_of_lists):
-        lens = [len(list_) for list_ in list_of_lists]
-        return max(lens)
-
-    def _get_release_date_from_sku(self, sku):
-        file_name = "shoe_data/{}_shoe_info.csv".format(self.brand.replace("-", "_"))
-        shoe_info_df = pd.read_csv(file_name)
-        info = shoe_info_df.loc[shoe_info_df["sku"] == sku, ["releaseDate"]]
-        return info["releaseDate"].values[0]
-
-    def add_additional_features(self):
-        shoe_info_file_name = "shoe_data/{}_shoe_info.csv".format(self.brand.replace("-", "_"))
-        shoe_info_df = pd.read_csv(shoe_info_file_name)
-        if self.brand != "other-sneakers":
-            self._format_model(shoe_info_df)
-            self._format_name(shoe_info_df)
-        self._add_color_info(shoe_info_df)
-        self._add_date_info(shoe_info_df)
-        
-        self._add_blank_columns_to_df(shoe_info_df)
-        
-        shoe_names = self._get_shoe_name_list()
-        for shoe in shoe_names:
-            try:
-                file_name = "shoe_data/shoe_transactions/{}/{}.csv".format(self.brand, shoe)
-                shoe_transaction_df = pd.read_csv(file_name)
-                sku = shoe_transaction_df["sku"].values[0]
-                shoe_release_date = self._get_release_date_from_sku(sku)
-                self._add_release_date_delta(shoe_transaction_df, shoe_release_date)
-                self._add_rolling_mean_by_shoe_size(shoe_transaction_df)
-                self._get_max_price_and_date_and_days_since_release(sku, shoe_transaction_df, shoe_info_df)
-                self._get_min_price_and_date_and_days_since_release(sku, shoe_transaction_df, shoe_info_df)
-                self._get_month_and_year_with_most_transactions(sku, shoe_transaction_df, shoe_info_df)
-                self._get_most_popular_shoe_size(sku, shoe_transaction_df, shoe_info_df)
-                shoe_transaction_df.to_csv(file_name, index=False)
-            except:
-                continue
-
-
-        shoe_info_df.to_csv(shoe_info_file_name, index=False)
-
-    def _add_blank_columns_to_df(self, shoe_info_df):
-        shoe_info_df["month_and_year_with_most_transactions"] = "N/A"
-        shoe_info_df["min_price"] = "N/A"
-        shoe_info_df["min_price_date"] = "N/A"
-        shoe_info_df["min_price_days_since_release"] = "N/A"
-        shoe_info_df["max_price"] = "N/A"
-        shoe_info_df["max_price_date"] = "N/A"
-        shoe_info_df["max_price_days_since_release"] = "N/A"
-        shoe_info_df["most_popular_size"] = "N/A"
-
-    def _add_rolling_mean_by_shoe_size(self, shoe_transaction_df):
-        shoe_transaction_df["rolling_average_price_by_size"] = shoe_transaction_df.groupby('shoeSize')['amount'].rolling(5).mean().reset_index(0, drop=True)
-
-    def _add_release_date_delta(self, shoe_transaction_df, shoe_release_date):
-        try:
-            date_format = "%Y-%m-%d"
-            shoe_release_date_formatted = datetime.strptime(shoe_release_date, date_format)
-            shoe_transactions_dates = list(pd.to_datetime(shoe_transaction_df["createdAt"]))
-            deltas = [transaction_date - shoe_release_date_formatted for transaction_date in shoe_transactions_dates]
-            days = [d.days for d in deltas]
-            shoe_transaction_df["days_since_release"] = days
-            shoe_transaction_df["release_date"] = shoe_release_date_formatted
-        except ValueError: #date is either -- or in different format
-            shoe_transaction_df["days_since_release"] = "N/A"
-            shoe_transaction_df["release_date"] = "N/A"
-
-    def _get_month_and_year_with_most_transactions(self, sku, shoe_transaction_df, shoe_info_df):
-        most_popular = shoe_transaction_df['createdAt'].groupby(pd.to_datetime(shoe_transaction_df['createdAt']).dt.to_period("M")).agg('count').idxmax()
-        shoe_info_df.loc[shoe_info_df["sku"] == sku, "month_and_year_with_most_transactions"] = most_popular
-
-    def _get_min_price_and_date_and_days_since_release(self, sku, shoe_transaction_df, shoe_info_df):
-        min_index = shoe_transaction_df['amount'].idxmin()
-        min_amount = shoe_transaction_df['amount'].iloc[min_index]
-        min_date = shoe_transaction_df['createdAt'].iloc[min_index]
-        min_days_since_release = shoe_transaction_df['days_since_release'].iloc[min_index]
-
-        shoe_info_df.loc[shoe_info_df["sku"] == sku, "min_price"] = min_amount
-        shoe_info_df.loc[shoe_info_df["sku"] == sku, "min_price_date"] = min_date
-        shoe_info_df.loc[shoe_info_df["sku"] == sku, "min_price_days_since_release"] = min_days_since_release
-
-    def _get_max_price_and_date_and_days_since_release(self, sku, shoe_transaction_df, shoe_info_df):
-        max_index = shoe_transaction_df['amount'].idxmax()
-        max_amount = shoe_transaction_df['amount'].iloc[max_index]
-        max_date = shoe_transaction_df['createdAt'].iloc[max_index]
-        max_days_since_release = shoe_transaction_df['days_since_release'].iloc[max_index]
-
-        shoe_info_df.loc[shoe_info_df["sku"] == sku, "max_price"] = max_amount
-        shoe_info_df.loc[shoe_info_df["sku"] == sku, "max_price_date"] = max_date
-        shoe_info_df.loc[shoe_info_df["sku"] == sku, "max_price_days_since_release"] = max_days_since_release
-
-    def _get_most_popular_shoe_size(self, sku, shoe_transaction_df, shoe_info_df):
-        max_index = shoe_transaction_df['amount'].idxmax()
-        most_popular_size = shoe_transaction_df['shoeSize'].iloc[max_index]
-        shoe_info_df.loc[shoe_info_df["sku"] == sku, "most_popular_size"] = most_popular_size
-
+    
 
 if __name__ == '__main__':
     #adidas, nike, retro-jordans, other-sneakers
-    formatter = StockXDataFormatter("other-sneakers")
+    formatter = StockXDataFormatter("adidas")
 
-    #Formats scraped data
-    #formatter.create_shoe_info_csv()
-    #formatter.create_shoe_transaction_csvs()
-
-    #Adds more columns and features
-    formatter.add_additional_features()
+    print("Formatting scraped data:")
+    formatter.create_shoe_info_csv()
+    formatter.create_shoe_transaction_csvs()

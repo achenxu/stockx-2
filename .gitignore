@@ -2,3 +2,6 @@ shoe_info/
 shoe_links/
 shoe_transactions/
 shoe_data/
+tfvenv/
+util/
+.ipynb_checkpoints/
